@@ -23,7 +23,7 @@ import com.jeremyfeinstein.slidingmenu.lib.SlidingMenu;
 
 import cs.man.ac.uk.tavernamobile.fragments.ExploreFragment;
 import cs.man.ac.uk.tavernamobile.fragments.RunsFragment;
-import cs.man.ac.uk.tavernamobile.fragments.WorkflowsFragment;
+import cs.man.ac.uk.tavernamobile.fragments.LaunchHistoryFragment;
 
 public class MainActivity extends FragmentActivity {
 	
@@ -73,7 +73,7 @@ public class MainActivity extends FragmentActivity {
         slidingMenu.attachToActivity(this, SlidingMenu.SLIDING_CONTENT);
         slidingMenu.setMenu(R.layout.sliding_menu);
         
-        this.overridePendingTransition(R.anim.push_left_in, R.anim.push_left_out);
+        // this.overridePendingTransition(R.anim.push_left_in, R.anim.push_left_out);
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN);
 		
 		// UI components
@@ -86,7 +86,7 @@ public class MainActivity extends FragmentActivity {
 	    mSectionsPagerAdapter = new SectionsPagerAdapter(getSupportFragmentManager());
 				
 		ExploreFragment searchFragment = new ExploreFragment();
-		WorkflowsFragment wfFragment = new WorkflowsFragment();
+		LaunchHistoryFragment wfFragment = new LaunchHistoryFragment();
 		RunsFragment runsFragment = new RunsFragment();
 		
 		mSectionsPagerAdapter.addFragment(searchFragment);
@@ -202,6 +202,12 @@ public class MainActivity extends FragmentActivity {
 		Toast.makeText(this, "Press Back button one more time to quit", Toast.LENGTH_SHORT).show();
 		backHit = true;
 	    return;
+	}
+	
+	@Override
+	protected void onPause(){
+		super.onPause();
+		this.overridePendingTransition(R.anim.push_left_in, R.anim.push_left_out);
 	}
 	
 	/**

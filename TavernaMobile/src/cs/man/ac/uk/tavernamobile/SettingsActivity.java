@@ -14,6 +14,7 @@ public class SettingsActivity extends PreferenceActivity {
 		ActionBar actionBar = getActionBar();
 		actionBar.setDisplayHomeAsUpEnabled(true);
 		actionBar.setTitle("Settings");
+		actionBar.setIcon(this.getResources().getDrawable(R.drawable.taverna_wheel_logo_medium));
 
 		getFragmentManager().beginTransaction()
 				.replace(android.R.id.content, new SettingFragments()).commit();
@@ -36,5 +37,11 @@ public class SettingsActivity extends PreferenceActivity {
 			// Load the preferences from an XML resource
 			addPreferencesFromResource(R.xml.settings_screen);
 		}
+	}
+	
+	@Override
+	public void finish(){
+		super.finish();
+		this.overridePendingTransition(R.anim.push_right_in, R.anim.push_right_out);
 	}
 }

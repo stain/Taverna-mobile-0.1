@@ -2,18 +2,25 @@ package cs.man.ac.uk.tavernamobile;
 
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.Bitmap;
+import android.graphics.Typeface;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
+import android.os.Handler;
 import android.support.v4.app.Fragment;
 import android.support.v4.app.FragmentActivity;
+import android.support.v4.app.FragmentManager;
+import android.support.v4.app.FragmentTransaction;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewGroup.LayoutParams;
 import android.widget.AdapterView;
 import android.widget.AdapterView.OnItemClickListener;
 import android.widget.ArrayAdapter;
+import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.TextView;
 import cs.man.ac.uk.tavernamobile.datamodels.User;
@@ -26,13 +33,18 @@ public class SlidingMenuFragment extends Fragment {
 	private FragmentActivity parentActivity;
 	private TextView myExperimentLoginText;
 	private View menuView;
-	private ListView list, settingList;
+	private LinearLayout listRoot;
+	private LayoutInflater layoutInflater;
+	private Typeface font;
+	
+	private int previouslySelectedFragIndex;
+	private String previousSelectedFragTag;
 
 	public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
 		menuView = inflater.inflate(R.layout.sliding_list, null);
+		listRoot = (LinearLayout) menuView.findViewById(R.id.slidingMenuRoot);
+		//menuScroll = (ScrollView) menuView.findViewById(R.id.slidingMenuScroll);
 		myExperimentLoginText = (TextView) menuView.findViewById(R.id.myExperimentLoginState);
-		list = (ListView) menuView.findViewById(R.id.tobe_added_list);
-		settingList = (ListView) menuView.findViewById(R.id.sliding_menu_setting_list);
 		refreshLoginState();
 		return menuView;
 	}
@@ -40,40 +52,11 @@ public class SlidingMenuFragment extends Fragment {
 	public void onActivityCreated(Bundle savedInstanceState) {
 		super.onActivityCreated(savedInstanceState);
 		parentActivity = this.getActivity();
-		
-		SimpleAdapter tobeAdapter = new SimpleAdapter(getActivity());
-		for (int i = 0; i < 5; i++) {
-			listObject obj = new listObject();
-			obj.setText("to be added...");
-			obj.setResID(R.drawable.ic_action_overflow);
-			tobeAdapter.add(obj);
-		}
-		setupList(list, tobeAdapter, "Data sources");
-		
-		SimpleAdapter settingAdapter = new SimpleAdapter(getActivity());
-		listObject obj1 = new listObject();
-		obj1.setText("Setting");
-		obj1.setResID(R.drawable.ic_action_overflow);
-		listObject obj2 = new listObject();
-		obj2.setText("CopyRight Info");
-		obj2.setResID(R.drawable.ic_action_search);
-		listObject[] listObjects = new listObject[]{obj1, obj2};
-		settingAdapter.addAll(listObjects);
-		setupList(settingList, settingAdapter, "Other");
-		
-		settingList.setOnItemClickListener(new OnItemClickListener(){
-			@Override
-			public void onItemClick(AdapterView<?> theListView, View parentView, 
-					int itemIndex, long arg3) {
-				if(itemIndex == 1){
-					((MainActivity) parentActivity).getMenu().toggle();
-					Intent goToSetting = new Intent(parentActivity, SettingsActivity.class);
-					parentActivity.startActivity(goToSetting);
-					
-				}
-			}
-			
-		});
+		layoutInflater = ((LayoutInflater) parentActivity
+							.getSystemService(Context.LAYOUT_INFLATER_SERVICE));
+		font = Typeface.createFromAsset(parentActivity.getAssets(), "Roboto-Light.ttf");
+		myExperimentLoginText.setTypeface(font);
+		refreshMenus();
 		
 		myExperimentLoginText.setOnClickListener(new android.view.View.OnClickListener() {
 				@Override
@@ -81,53 +64,185 @@ public class SlidingMenuFragment extends Fragment {
 					User user = TavernaAndroid.getMyEUserLoggedin();
 					if (user != null) {
 						MessageHelper.showOptionsDialog(parentActivity,
-								"Do you wish to log out ?", 
-								"Attention",
-								new CallbackTask() {
+							"Do you wish to log out ?", 
+							"Attention",
+							new CallbackTask() {
+								@Override
+								public Object onTaskInProgress(
+										Object... param) {
+									// Clear user logged-in and cookie
+									TavernaAndroid.setMyEUserLoggedin(null);
+									TavernaAndroid.setMyExperimentSessionCookies(null);
+									TavernaAndroid.setMyWorkflows(null);
+									TavernaAndroid.setFavouriteWorkflows(null);
+									clearLoginPreference();
+									parentActivity.recreate();
+									//refreshLoginState();
+									return null;
+								}
 	
-									@Override
-									public Object onTaskInProgress(
-											Object... param) {
-										// Clear user logged-in and cookie
-										TavernaAndroid.setMyEUserLoggedin(null);
-										TavernaAndroid.setMyExperimentSessionCookies(null);
-										refreshLoginState();
-										return null;
-									}
-	
-									@Override
-									public Object onTaskComplete(Object... result) {
-										return null;
-									}
-								}, null);
+								@Override
+								public Object onTaskComplete(Object... result) {
+									return null;
+								}
+							}, null);
 					}else{
-						/*FragmentTransaction ft =
-								parentActivity.getSupportFragmentManager().beginTransaction();
-						ft.setCustomAnimations(R.anim.push_left_in, R.anim.push_left_out);
-						Fragment newFragment = new MyExperimentLogin();
-						ft.addToBackStack("myExpLogin");
-						ft.replace(R.id.main_panel_root, newFragment).commit();
-						// close the menu
-						((MainActivity) parentActivity).getMenu().toggle();*/
-						
-						((MainActivity) parentActivity).getMenu().toggle();
-						((MainActivity) parentActivity).getMenu().setSlidingEnabled(false);
-						Intent gotoMyexperimentLogin = new Intent(
-								parentActivity, MyExperimentLogin.class);
+						((MainPanelActivity) parentActivity).getMenu().toggle();
+						Intent gotoMyexperimentLogin = new Intent(parentActivity, MyExperimentLogin.class);
 						parentActivity.startActivity(gotoMyexperimentLogin);
 					}
 				}
 			});
 	}
 
-	private void setupList(ListView list, SimpleAdapter tobeAdapter, String listTitle) {
-		View headerview = 
-				((LayoutInflater) parentActivity.getSystemService(Context.LAYOUT_INFLATER_SERVICE))
-				.inflate(R.layout.sliding_menu_list_header, null);
-		TextView listHeaderName = (TextView)headerview.findViewById(R.id.sliding_menu_list_name);
+	@Override
+	public void onStart() {
+		refreshLoginState();
+		super.onStart();
+	}
+
+	private void refreshMenus() {
+		listRoot.invalidate();
+		// Navigation Menu
+		final User userloggedIn = TavernaAndroid.getMyEUserLoggedin();
+		ListView navigationMenuList = null;
+		String[] navigationMenuNames = null;
+		int[] navigationMenuIcons =  null;
+		if(userloggedIn != null){
+			navigationMenuNames = new String[] {"Workflow Run Control", "Explore Workflows", "My Workflows"};
+			navigationMenuIcons = new int[] {R.drawable.gear_icon, R.drawable.myexperiment_logo_small, R.drawable.bookmark_icon};
+		}else{
+			navigationMenuNames = new String[] {"Workflow Run Control", "Explore Workflows"};
+			navigationMenuIcons = new int[] {R.drawable.gear_icon, R.drawable.myexperiment_logo_small};
+		}
+		navigationMenuList = setupList("Navigation", navigationMenuNames, navigationMenuIcons);
+		
+		// DataSourc Menu
+		String[] dataSourceNames = new String[] {"Dropbox", "Google Drive"};
+		int[] dataSourceIcons = new int[] {R.drawable.dropbox_icon, R.drawable.google_drive_icon};
+		ListView dataSourceList = setupList("Data Source", dataSourceNames, dataSourceIcons);
+		
+		// Other Menu
+		String[] otherMenuNames = null;
+		int[] otherMenuIcons = null;
+		if(userloggedIn == null){
+			otherMenuNames = new String[] {"Settings"};
+			otherMenuIcons = new int[] {R.drawable.settings_icon_dark};
+		}
+		else{
+			otherMenuNames = new String[] {"Settings", "Sign Out"};
+			otherMenuIcons = new int[] {R.drawable.settings_icon_dark, R.drawable.sign_out_icon};
+		}
+		ListView settingList = setupList("Others", otherMenuNames, otherMenuIcons);
+		
+		// list item click event setting
+		if(navigationMenuList != null){
+			navigationMenuList.setOnItemClickListener(new OnItemClickListener(){
+				@Override
+				public void onItemClick(AdapterView<?> theListView, View parentView, int itemIndex, long arg3) {
+					if(previouslySelectedFragIndex == itemIndex){
+						((MainPanelActivity) parentActivity).getMenu().toggle();
+					} else{
+						previouslySelectedFragIndex = itemIndex;
+						if(itemIndex == 1){
+								beginFragmentTransaction(new int[] {2, 3}, "RunsControlFragment");
+						} else if(itemIndex == 2){
+								beginFragmentTransaction(new int[] {0, 1}, "WorkflowsFragment");
+						} else if(itemIndex == 3){
+								beginFragmentTransaction(new int[] {4, 5}, "MyWorkflowsFragment");
+						}
+					}
+				}
+			});
+		}
+		
+		dataSourceList.setOnItemClickListener(new OnItemClickListener(){
+			@Override
+			public void onItemClick(AdapterView<?> theListView, View parentView, 
+					int itemIndex, long arg3) {
+				// TODO: setup dropbox and google drive
+				if(itemIndex == 1){
+				}
+				else if(itemIndex == 2){
+				}
+			}
+		});
+		
+		settingList.setOnItemClickListener(new OnItemClickListener(){
+			@Override
+			public void onItemClick(AdapterView<?> theListView, View parentView, 
+					int itemIndex, long arg3) {
+				if(itemIndex == 1){
+					((MainPanelActivity) parentActivity).getMenu().toggle();
+					Intent goToSetting = new Intent(parentActivity, SettingsActivity.class);
+					parentActivity.startActivity(goToSetting);
+				}
+				else if(itemIndex == 2){
+					MessageHelper.showOptionsDialog(parentActivity,
+						"Do you wish to log out ?", 
+						"Attention",
+						new CallbackTask() {
+							@Override
+							public Object onTaskInProgress(
+									Object... param) {
+								// Clear user logged-in and cookie
+								TavernaAndroid.setMyEUserLoggedin(null);
+								TavernaAndroid.setMyExperimentSessionCookies(null);
+								TavernaAndroid.setMyWorkflows(null);
+								TavernaAndroid.setFavouriteWorkflows(null);
+								parentActivity.recreate();
+								//refreshLoginState();
+								//clearLoginPreference();
+								//refreshMenus();
+								return null;
+							}
+
+							@Override
+							public Object onTaskComplete(Object... result) {
+								return null;
+							}
+						}, null);
+				}// end of else if
+			}
+		});
+	}
+	
+	/**
+	 * method to populate one menu list
+	 * 
+	 * @param menuList
+	 * @param listTitle
+	 * @param menuNames
+	 * @param menuIcons
+	 */
+	private ListView setupList(String listTitle, String[] menuNames, int[] menuIcons) {
+		SimpleAdapter menuAdapter = new SimpleAdapter(getActivity());
+		for(int i = 0; i < menuNames.length; i++){
+			listObject menuObject = new listObject();
+			menuObject.setText(menuNames[i]);
+			menuObject.setResID(menuIcons[i]);
+			menuAdapter.add(menuObject);
+		}
+		
+		LayoutParams params = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+		
+		View headerview = layoutInflater.inflate(R.layout.sliding_menu_list_header, null);
+		TextView listHeaderName = (TextView) headerview.findViewById(R.id.sliding_menu_list_name);
+		listHeaderName.setTypeface(font);
 		listHeaderName.setText(listTitle);
-		list.addHeaderView(headerview);
-		list.setAdapter(tobeAdapter);
+		ListView menuList = new ListView(parentActivity);
+		menuList.setLayoutParams(params);
+		
+		int sizeInPx = 10;
+		float scale = getResources().getDisplayMetrics().density;
+		int sizeInDp = (int) (sizeInPx*scale + 0.5f);
+		menuList.setPadding(sizeInDp, 0, sizeInDp, 0);
+		//menuList.setPadding(R.dimen.list_padding, 0, R.dimen.list_padding, 0);
+		
+		menuList.addHeaderView(headerview);
+		menuList.setAdapter(menuAdapter);
+		listRoot.addView(menuList, params);
+		return menuList;
 	}
 	
 	private void refreshLoginState() {
@@ -138,9 +253,9 @@ public class SlidingMenuFragment extends Fragment {
 			Bitmap avatarBitmap = 
 			 	TavernaAndroid.getmMemoryCache().get(userLoggedin.getAvatar().getResource());
 			if(avatarBitmap != null){
-				// TODO : scaled to 50 x 50
+				// TODO : fixed scaled to 80 x 80
 				Drawable avatarDrawable = new BitmapDrawable(getResources(),
-						Bitmap.createScaledBitmap(avatarBitmap, 50, 50, false));
+						Bitmap.createScaledBitmap(avatarBitmap, 80, 80, false));
 				/*Rect outRect = new Rect();
 				myExperimentLoginText.getDrawingRect(outRect);
 				// resize the Rect
@@ -158,6 +273,60 @@ public class SlidingMenuFragment extends Fragment {
 			myExperimentLoginText.setText("Log in to myExperiment");
 		}
 	}
+	
+	private void clearLoginPreference(){
+		SharedPreferences loginPreferences = 
+				parentActivity.getSharedPreferences("loginPreference", Context.MODE_PRIVATE);
+		if (loginPreferences != null){
+			SharedPreferences.Editor loginPrefsEditor = loginPreferences.edit();
+			boolean usernameSaved = loginPreferences.getBoolean("usernameSaved", false);
+	        if (usernameSaved) {
+	        	loginPrefsEditor = loginPreferences.edit();
+	        	loginPrefsEditor.putBoolean("usernameSaved", false);
+	        	loginPrefsEditor.putString("username", "");
+	        	boolean passwordSaved = loginPreferences.getBoolean("passwordSaved", false);
+	        	if(passwordSaved){
+	        		loginPrefsEditor.putBoolean("passwordSaved", false);
+	        		loginPrefsEditor.putString("password", "");
+	        	}
+	        	loginPrefsEditor.commit();
+	        }
+		}
+	}
+	
+	/**
+	 * @param fragmentsToInt - integer representation of fragments
+	 *			0 - ExploreFragment, 1 - SearchResultFragment, 2 - RunsFragments
+	 *  		3 - LaunchHistoryFragments, 4 - MyWorkflowFragment, 5 - FavouriteWorkflowFragment
+	 *  
+	 * @param backStackTag
+	 */
+	private void beginFragmentTransaction(int[] fragmentsToInt, String backStackTag){
+		FragmentManager fm = parentActivity.getSupportFragmentManager();
+		FragmentTransaction ft = fm.beginTransaction();
+		// ft.setCustomAnimations(R.anim.push_left_in, R.anim.push_left_out);
+        //boolean successfullypopped = fm.popBackStackImmediate(backStackTag, 1);
+        //if(!successfullypopped){
+        	Fragment newFragment = new FragmentsContainer();
+    		Bundle args = new Bundle();
+    		args.putIntArray("fragmentsToInstantiate", fragmentsToInt);
+    		newFragment.setArguments(args);
+    		ft.addToBackStack(backStackTag);
+    		if(previousSelectedFragTag == null){
+    			fm.beginTransaction().hide(fm.findFragmentByTag("StarterFragments")).commit();
+    		}else{
+    			fm.beginTransaction().hide(fm.findFragmentByTag(previousSelectedFragTag)).commit();
+    		}
+    		previousSelectedFragTag = backStackTag;
+    		ft.replace(R.id.main_panel_root, newFragment, backStackTag).commit();
+        //}
+        // smooth transaction
+		new Handler().postDelayed(new Runnable() {
+			public void run() {
+				// close the menu
+				((MainPanelActivity) parentActivity).getMenu().toggle();
+			}},500);
+	}
 
 	private class SimpleAdapter extends ArrayAdapter<listObject> {
 
@@ -169,10 +338,10 @@ public class SlidingMenuFragment extends Fragment {
 			if (convertView == null) {
 				convertView = LayoutInflater.from(getContext()).inflate(R.layout.sliding_row, null);
 			}
-			/*ImageView icon = (ImageView) convertView.findViewById(R.id.row_icon);
-			icon.setImageResource(getItem(position).iconRes);*/
+			
 			TextView title = (TextView) convertView.findViewById(R.id.row_title);
 			title.setText(getItem(position).getText());
+			title.setTypeface(font);
 			Drawable drawable = getResources().getDrawable(getItem(position).getResID());
 			title.setCompoundDrawablesWithIntrinsicBounds(drawable, null, null, null);
 

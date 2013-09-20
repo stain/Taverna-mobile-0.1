@@ -39,10 +39,16 @@ public class FilePickerActivity extends ListActivity {
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		
+		String inputPortName = (String) getIntent().getStringExtra("inputPortName");
+		if(inputPortName == null){
+			inputPortName = "input port";
+		}
+		
 		// UI components
 		ActionBar actionBar = getActionBar();
 		actionBar.setDisplayHomeAsUpEnabled(true);
-		actionBar.setTitle("Select Input file");
+		actionBar.setTitle("Select Input file for \""+inputPortName+"\"");
+		actionBar.setIcon(this.getResources().getDrawable(R.drawable.taverna_wheel_logo_medium));
 		
 		// Set the view to be shown if the list is empty
 		LayoutInflater inflator = (LayoutInflater)getSystemService(Context.LAYOUT_INFLATER_SERVICE);

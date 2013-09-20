@@ -74,8 +74,8 @@ public class SearchResultScreen extends Activity implements CallbackTask {
 		iniLoadingListener = new InitialSearchResultHandler();
 		moreResultsLoadingListener = new AutoLoadMoreListener();
 		// case 1:
-		// when navigate to result screen the loading mode should be
-		// "auto-load more result" by
+		// execute the search before navigating to result screen. 
+		// hence the loading mode should be "load more result"
 		// search = new WorkflowsLoader(currentActivity, moreResultsLoadingListener);
 		
 		// case 2:
@@ -107,7 +107,8 @@ public class SearchResultScreen extends Activity implements CallbackTask {
 		resultList.addFooterView(footerView);
 		resultList.setAdapter(resultListAdapter);*/
 		
-		onScrollTaskHandler = new ListViewOnScrollTaskHandler(resultList, new OnScrollLoadingTask());
+		onScrollTaskHandler = 
+				new ListViewOnScrollTaskHandler(resultList, new OnScrollLoadingTask());
 		onScrollTaskHandler.setOnScrollLoading();
 		
 		// setup event reaction -
@@ -138,7 +139,7 @@ public class SearchResultScreen extends Activity implements CallbackTask {
 		ArrayAdapter<CharSequence> adapter = 
 				ArrayAdapter.createFromResource(
 						currentActivity, 
-						R.array.wfExpo_sort_criteria, 
+						R.array.wfList_sort_criteria, 
 						android.R.layout.simple_spinner_item);
 		// Sets the layout resource to create the drop down views
 		adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
@@ -227,17 +228,6 @@ public class SearchResultScreen extends Activity implements CallbackTask {
 		search.DoSearch(searchQuery, sortedBy, order, false);
 	}
 	
-	private class OnScrollLoadingTask implements CallbackTask{
-		@Override
-		public Object onTaskInProgress(Object... param) {return null;}
-
-		@Override
-		public Object onTaskComplete(Object... result) {
-			search.DoSearch(searchQuery, sortedBy, order, false);
-			return null;
-		}
-	}
-	
 	@Override
 	public boolean onCreateOptionsMenu(Menu menu) {
 		getMenuInflater().inflate(R.menu.search_results_screen, menu);
@@ -275,7 +265,7 @@ public class SearchResultScreen extends Activity implements CallbackTask {
 		searchQuery = query.getText().toString();
 		if (searchQuery.isEmpty()){
 			MessageHelper.showMessageDialog(currentActivity, 
-					"Oops! You haven't told me what you would like to search !");
+					"Alert", "Oops! You haven't told me what you would like to search !", null);
 		}
 		else{
 			loadingProBar.setVisibility(0);
@@ -297,6 +287,7 @@ public class SearchResultScreen extends Activity implements CallbackTask {
 			Intent intent = new Intent(this, MainActivity.class);
 			intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
 			startActivity(intent);
+			this.overridePendingTransition(R.anim.push_left_in, R.anim.push_left_out);
 			return true;
 		default:
 			return super.onOptionsItemSelected(item);
@@ -326,7 +317,7 @@ public class SearchResultScreen extends Activity implements CallbackTask {
 		if(result[0] instanceof String){
 			String exception = (String) result[0];
 			if(exception != null){
-				MessageHelper.showMessageDialog(currentActivity, exception);
+				MessageHelper.showMessageDialog(currentActivity, null, exception, null);
 			}
 		}
 		else{
@@ -358,12 +349,12 @@ public class SearchResultScreen extends Activity implements CallbackTask {
 		public Object onTaskComplete(Object... result) {
 			if(result[0] instanceof String){
 				// exception message
-				MessageHelper.showMessageDialog(currentActivity, (String)result[0]);
+				MessageHelper.showMessageDialog(currentActivity, null, (String)result[0], null);
 				loadingProBar.setVisibility(8);
 				return null;
 			}
 			
-			ArrayList<Workflow> newResults = (ArrayList<Workflow>) result[0];
+			final ArrayList<Workflow> newResults = (ArrayList<Workflow>) result[0];
 			
 			if(newResults!= null && newResults.size() > 0){
 				// do animation on all of them since they are all
@@ -371,22 +362,35 @@ public class SearchResultScreen extends Activity implements CallbackTask {
 				workflowResults = new ArrayList<Workflow>();
 				workflowResults.addAll(newResults);
 				resultListAdapter = new SearchResultListAdapter(currentActivity, workflowResults);
-				resultListAdapter.animationStartPosition = 0;
-				
 				resultList.addFooterView(footerView);
 				resultList.setAdapter(resultListAdapter);
+				
+				resultList.post(new Runnable() {
+				    public void run() {
+				    	if(newResults.size() <= resultList.getLastVisiblePosition()){
+							resultList.removeFooterView(footerView);
+				    	}
+				    	// At this point the list has already being rendered.
+				    	// Set the animation start position to be the start of the
+				    	// next set of items, hence any layout changes made on the 
+				    	// rendered list will not trigger animation 
+				    	// the list view being refreshed
+						resultListAdapter.animationStartPosition = resultList.getLastVisiblePosition();
+				    }
+				});
 			}
 			else{
-				resultList.removeFooterView(footerView);
-				// tell loader no need to do the loading
+				// inform loader no need to do the loading
 				// since no more results found
 				onScrollTaskHandler.disableTask = true;
+				// inform the adapter not to add bottom loading view
+				// resultListAdapter.noMoreData = true;
 				MessageHelper.showMessageDialog(
 						currentActivity, 
-						"No more matching workflow found");
+						null, "No matching workflow found", null);
 			}
 
-			// tell the loader that we are not in a search
+			// inform the loader that we are not in a search
 			// therefore it is safe to execute a new search
 			// when scroll to the end
 			onScrollTaskHandler.taskInProgress = false;
@@ -413,31 +417,51 @@ public class SearchResultScreen extends Activity implements CallbackTask {
 		public Object onTaskComplete(Object... result) {
 			if(result[0] instanceof String){
 				// exception message
-				MessageHelper.showMessageDialog(currentActivity, (String)result[0]);
+				MessageHelper.showMessageDialog(currentActivity, null, (String)result[0], null);
 				return null;
 			}
 			
 			ArrayList<Workflow> newResults = (ArrayList<Workflow>) result[0];
-			
+			// only do animation on newly added items
+			resultListAdapter.animationStartPosition = 
+					workflowResults.size() > 0 ? workflowResults.size() - 1 : 0;
 			if(newResults!= null && newResults.size() > 0){
-				// only do animation on newly added items
-				resultListAdapter.animationStartPosition = 
-						workflowResults.size() > 0 ? workflowResults.size() - 1 : 0;
 				workflowResults.addAll(newResults);
 				resultListAdapter.notifyDataSetChanged();
 			}
 			else{
 				resultList.removeFooterView(footerView);
-				// tell loader no need to do the loading
+				// inform loader no need to do the loading
 				// since no more results found
 				onScrollTaskHandler.disableTask = true;
+				// inform the adapter not to add bottom loading view
+				// resultListAdapter.noMoreData = true;
 				MessageHelper.showMessageDialog(
 						currentActivity, 
-						"No more matching workflow found");
+						null, "No more matching workflow found", null);
 			}
 
 			onScrollTaskHandler.taskInProgress = false;
 			return null;
 		}
+	}
+	
+	private class OnScrollLoadingTask implements CallbackTask{
+		@Override
+		public Object onTaskInProgress(Object... param) {
+			search.DoSearch(searchQuery, sortedBy, order, false);
+			return null;
+		}
+
+		@Override
+		public Object onTaskComplete(Object... result) {
+			return null;
+		}
+	}
+	
+	@Override
+	public void finish(){
+		this.overridePendingTransition(R.anim.push_right_in, R.anim.push_right_out);
+		super.finish();
 	}
 }

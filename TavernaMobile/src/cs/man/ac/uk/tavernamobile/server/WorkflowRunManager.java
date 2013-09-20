@@ -40,10 +40,13 @@ import android.preference.PreferenceManager;
 import android.util.Log;
 import android.widget.Toast;
 import cs.man.ac.uk.tavernamobile.dataaccess.DataProviderConstants;
+import cs.man.ac.uk.tavernamobile.datamodels.OutputValue;
 import cs.man.ac.uk.tavernamobile.datamodels.WorkflowBE;
+import cs.man.ac.uk.tavernamobile.datamodels.WorkflowRun;
 import cs.man.ac.uk.tavernamobile.utils.BackgroundTaskHandler;
 import cs.man.ac.uk.tavernamobile.utils.CallbackTask;
 import cs.man.ac.uk.tavernamobile.utils.MessageHelper;
+import cs.man.ac.uk.tavernamobile.utils.OutputTypeConstant;
 import cs.man.ac.uk.tavernamobile.utils.TavernaAndroid;
 import cs.man.ac.uk.tavernamobile.utils.WorkflowFileLoader;
 
@@ -93,6 +96,11 @@ public class WorkflowRunManager
 		sharedPrefs = PreferenceManager.getDefaultSharedPreferences(currentActivity);
 	}
 
+	public void getRuns(CallbackTask listener){
+		runListRetrieverListener = listener;
+		new RunListRetriever().Execute();
+	}
+	
 	public String getRunStartTime() {
 		return runStartTime;
 	}
@@ -104,6 +112,33 @@ public class WorkflowRunManager
 	public String getRunStatue() {
 		return runStatue;
 	}
+	
+	/**
+	 * Retrieve outputs of a particular run or the most recent run
+	 * from the Taverna server
+	 * 
+	 * @param runID - ID of the run to get output from
+	 * @param listener - the listener for handling inputs retrieved
+	 */
+	public void getRunInputs(String runId, CallbackTask listener){
+		inputPortsRetrievalListener = listener;
+		new InputPortsRetriever().Execute(runId);
+	}
+	
+	/**
+	 * Retrieve outputs of a particular run or the most recent run
+	 * from the Taverna server
+	 * 
+	 * @param workflowTitle - String that is used to build outputs directory
+	 * @param runID - ID of the run to get output from
+	 * @param listener - the listener for output retrieval states (fail/success)
+	 */
+	// TODO: passing in workflow title String...
+	public void getRunOutput(String workflowTitle, String runId, CallbackTask listener){
+		outputRetrievalListener = listener;
+		// start outputHandler thread gather result
+		new OutputHanlder().Execute(workflowTitle, runId);
+	}
 
 	public void CreateRun(WorkflowBE workflowEntity, CallbackTask listener){
 		creationListener = listener;
@@ -113,12 +148,25 @@ public class WorkflowRunManager
 	// for newly created workflow we need to
 	// setup input and then run the workflow, all in one go
 	// in order to minimise threads interference
+	
+	/**
+	 * for newly created workflow we need to setup input 
+	 * and then run the workflow, all in one go
+	 * 
+	 * @param inputs
+	 * @param workflowEntity
+	 * @param listener
+	 * @param requireMonitor - flag to indicate whether monitor info is needed
+	 * i.e whether the monitor is on
+	 */
 	public void StartWorkflowRun(Map<String, Object> inputs, 
-			WorkflowBE workflowEntity, CallbackTask listener){
+			WorkflowBE workflowEntity, CallbackTask listener, boolean requireMonitor){
 		runListener = listener;
 		// start this thread to pull run statue first
 		// otherwise it is difficult to update statue
-		new RunProgressListenerInvoker().Execute();
+		if(requireMonitor){
+			new RunProgressListenerInvoker().Execute();
+		}
 		new RunInitiator().Execute(inputs, workflowEntity);
 	}
 	
@@ -169,10 +217,7 @@ public class WorkflowRunManager
 		new RunCleaner().Execute("Deleting all runs...", 2);
 	}
 	
-	public void getRuns(CallbackTask listener){
-		runListRetrieverListener = listener;
-		new RunListRetriever().Execute();
-	}
+	
 
 	// Check Run State and invoke relevant reaction
 	public void checkRunStateWithID(String runId, CallbackTask listener){
@@ -180,32 +225,7 @@ public class WorkflowRunManager
 		new RunStateChecker().Execute(runId);
 	}
 	
-	/**
-	 * Retrieve outputs of a particular run or the most recent run
-	 * from the Taverna server
-	 * 
-	 * @param runID - ID of the run to get output from
-	 * @param listener - the listener for handling inputs retrieved
-	 */
-	public void getRunInputs(String runId, CallbackTask listener){
-		inputPortsRetrievalListener = listener;
-		new InputPortsRetriever().Execute(runId);
-	}
 	
-	/**
-	 * Retrieve outputs of a particular run or the most recent run
-	 * from the Taverna server
-	 * 
-	 * @param workflowTitle - String that is used to build outputs directory
-	 * @param runID - ID of the run to get output from
-	 * @param listener - the listener for output retrieval states (fail/success)
-	 */
-	// TODO: passing in workflow title String...
-	public void getRunOutput(String workflowTitle, String runId, CallbackTask listener){
-		outputRetrievalListener = listener;
-		// start outputHandler thread gather result
-		new OutputHanlder().Execute(workflowTitle, runId);
-	}
 
 	public String reportRunStartTime(){
 		Run run = ta.getWorkflowRunLaunched();
@@ -266,7 +286,7 @@ public class WorkflowRunManager
 		return runStatue;
 	}
 
-	public String getRunStateWithID(String runID){
+	/*public String getRunStateWithID(String runID){
 		Server server = ta.getServer();
 		Run theRun = null;
 		try {
@@ -285,7 +305,7 @@ public class WorkflowRunManager
 			runStatue = getRunState(statu);
 		}
 		return runStatue;
-	}
+	}*/
 
 	private String getRunState(RunStatus statu) {
 		switch (statu){
@@ -312,7 +332,7 @@ public class WorkflowRunManager
 		try {
 			workflowData = WorkflowFileLoader.getBytesFromFile(new File(workflowEntity.getFilePath()));
 		} catch (Exception e) {
-			MessageHelper.showMessageDialog(currentActivity, e.getMessage());
+			MessageHelper.showMessageDialog(currentActivity, "Error", e.getMessage(), null);
 		}
 		
 		Run runCreated = null;
@@ -329,10 +349,10 @@ public class WorkflowRunManager
 		ContentValues args = new ContentValues();
 		args.put(DataProviderConstants.Run_Id, runID);
 		
-		String subQuery = "(SELECT WF_ID FROM launchHistory "+
-				  "WHERE Workflow_Title=\""+workflowEntity.getTitle()+ "\" AND "+
-					    "Version=\""+workflowEntity.getVersion()+"\" AND "+
-					    "Uploader_Name=\""+workflowEntity.getUploaderName()+"\")";
+		String subQuery = "SELECT WF_ID FROM launchHistory "+
+				  "WHERE Workflow_Title = '"+workflowEntity.getTitle()+ "' AND "+
+					    "Version = '"+workflowEntity.getVersion()+"' AND "+
+					    "Uploader_Name = '"+workflowEntity.getUploaderName()+"'";
 		args.put(DataProviderConstants.WF_ID, subQuery);
 		
 		/** INSERT **/
@@ -425,7 +445,7 @@ public class WorkflowRunManager
 		@Override
 		public Object onTaskInProgress(Object... param) {
 			// launch run for each inputs file
-			for(int i = 1; i < inputsFilesPath.size(); i++){
+			for(int i = 0; i < inputsFilesPath.size(); i++){
 				try{
 					Object result = createWorkflowRun(workflowEntity);
 					if(!(result instanceof Run)){
@@ -437,6 +457,7 @@ public class WorkflowRunManager
 					// read saved input object
 					FileInputStream fis = new FileInputStream(inputsFilesPath.get(i));
 				    ObjectInputStream ois = new ObjectInputStream(fis);
+				    // String test = (String) ois.readObject();
 				    HashMap<String, Object> savedInputs = (HashMap<String, Object>) ois.readObject();
 				    if(savedInputs == null){
 				    	fis.close();
@@ -632,19 +653,24 @@ public class WorkflowRunManager
 							stream.close();*/
 							
 							ObjectOutputStream oos = new ObjectOutputStream(stream);
-							oos.writeObject(inputs.toString());
+							oos.writeObject(inputs);
 							oos.close();
 						} catch (FileNotFoundException e) {
+							// if there were any error saving the input
+							// swallow... the run starting process
+							// shouldn't be interrupted
 							e.printStackTrace();
 						} catch (NetworkConnectionException e) {
 							try {
 								stream.close();
 							} catch (IOException e1) {
-								// swallow
+								// Irrelevant message. swallow
 								e1.printStackTrace();
 							}
+							// report network connection problem
 							return e.getMessage();
 						} catch(IOException e){
+							// Irrelevant message. swallow
 							e.printStackTrace();	
 						}
 					}// end of iterating over inputs
@@ -671,7 +697,7 @@ public class WorkflowRunManager
 				// TODO: "log" has to be removed in release version
 				Log.e("WorkflowRunError2", "Workflow Run needed.");
 			}
-			return null;
+			return "The Run has been successfully started.";
 		}
 
 		public Object onTaskComplete(Object... result) {
@@ -720,7 +746,9 @@ public class WorkflowRunManager
 
 		public Object onTaskComplete(Object... result) {
 			// inform monitor to update statues
-			runListener.onTaskInProgress();
+			if(runListener != null){
+				runListener.onTaskInProgress();
+			}
 
 			// pull state again
 			if(!runStatue.equals("Finished")){
@@ -746,19 +774,15 @@ public class WorkflowRunManager
 	private class OutputHanlder implements CallbackTask{
 
 		private HashMap<String, String> outputs = new HashMap<String, String>();
-
-		//supported output type
-		// TODO: more types support......
-		public static final String PORT_ERROR_TYPE = "application/x-error";
-		//public static final String PORT_LIST_TYPE = "application/x-list";
-		public static final String PORT_TEXT_TYPE = "text/plain";
-		public static final String PORT_IMAGE_TYPE = "image/png";
-
-		private ArrayList<Object> outputPortsValue;
+		// <PortName, outputTree> map
+		private HashMap<String, OutputValue> allOutputs;
+		
 		private int portDepth;
 		private String currentPortName;
 		// string used to build the outputs directory path
 		private String workflowTitle;
+		private String outputsSubPath;
+		private String locationToStore;
 
 		public void Execute(Object... params){
 			workflowTitle = (String) params[0];
@@ -767,12 +791,12 @@ public class WorkflowRunManager
 			}
 			outputHandlingTaskHandler = new BackgroundTaskHandler();
 			outputHandlingTaskHandler.StartBackgroundTask(
-					currentActivity, this, "Preparing outputs...", params);
+					currentActivity, this, null, params);
 		}
 
 		public Object onTaskInProgress(Object... params) {
 			String runId = (String) params[1];
-
+			// check run state first
 			Run theRun = null;
 			if(runId != null){
 				try {
@@ -794,63 +818,74 @@ public class WorkflowRunManager
 			} catch (NetworkConnectionException e) {
 				return "Connection problem reading data from server";
 			}
+			
+			reportRunStartTime();
 
-			outputPortsValue = new ArrayList<Object>();
+			allOutputs = new HashMap<String, OutputValue>();
+			// try to get all output ports
 			Map<String, OutputPort> OutputPorts;
 			try {
 				OutputPorts = theRun.getOutputPorts();
 			} catch (NetworkConnectionException e) {
 				return "Connection problem reading data from server";
 			}
+			// iterate over all output ports
 			Iterator<Entry<String, OutputPort>> it = OutputPorts.entrySet().iterator();
-			// for one output ports
 			while(it.hasNext()){
+				// for one output ports
 				Map.Entry<String, OutputPort> pair = it.next();
 				// high level determined variables
 				OutputPort outPort = pair.getValue();
 				portDepth = outPort.getDepth();
 				currentPortName = outPort.getName();
+				
+				// prepare output file path
+				outputsSubPath = "/TavernaAndroid/Outputs/" + runStartTime +"/" 
+									+ workflowTitle +"/" + currentPortName + "/";
+				locationToStore = getFileSaveLocation(outputsSubPath);
 
 				// undetermined variable
 				PortValue portValue = outPort.getValue();
 
-				Object data = null;
+				OutputValue data = null;
 				// no list, single value
 				if(portDepth == 0){
 					data = retrieveSingleDepthData(portValue);
-					outputPortsValue.add(data);
 				}
 				else if (portDepth > 0){
 					// this method should eventually return ArrayList<Object>
 					// the return type declared in its signature is for 
 					// recursively collect data
 					data = retrieveMultiDepthData(portDepth, portValue);
-					// add the collection
-					outputPortsValue.add(data);
 				}
+				// map to the portName
+				allOutputs.put(currentPortName, data);
 
 				// string representation of "outputPortsValue"
 				String textToDisplay = "";
-				textToDisplay = constructString(textToDisplay, data, 0);
-
+				textToDisplay = constructString(textToDisplay, data, 1);
 				outputs.put(pair.getKey(), textToDisplay);
 			}
 
 			// set global outputs (output of most recent run) holder
 			ta.setOutputs(outputs);
 
-			return outputs;
+			// return outputs;
+			return allOutputs;
 		}
 
-		private String retrieveSingleDepthData(PortValue portValue){
+		private OutputValue retrieveSingleDepthData(PortValue portValue){
 
+			OutputValue outputValue = new OutputValue();
 			// at this point so it should be safe to get value
 			// without throwing UnsupportedOperationException
-			byte[] data;
+			byte[] data = null;
 			try {
 				data = portValue.getData();
 			} catch (NetworkConnectionException e1) {
-				return "Connection problem reading data from server";
+				outputValue.setErrorValue("Connection problem reading data from server");
+				outputValue.setValueType(OutputTypeConstant.APPLOCATION_ERROR);
+				return outputValue;
 			}
 			while(data == null){
 				try {
@@ -860,81 +895,89 @@ public class WorkflowRunManager
 					e.printStackTrace();
 				}
 			}
-			long dataSize = portValue.getDataSize();
+			
 			// check types
 			String contentType = portValue.getContentType();
-			String outputsSubPath = "/TavernaAndroid/Outputs/" 
-					+ runStartTime +"/" + workflowTitle +"/" + currentPortName + "/";
-			
-			if(contentType.equals(PORT_TEXT_TYPE)){				
-				String locationToStore = getFileSaveLocation(outputsSubPath);
-				try {
-					FileOutputStream stream = new FileOutputStream(locationToStore+"/output.txt"); 
-					stream.write(data);
-					stream.flush();
-					stream.close();
-				}catch(IOException e){
-					e.printStackTrace();	
-				}
-				// if text is too large to fit in the screen
-				// store only
-				if (dataSize > 4096){
-					return "(Output saved in output folder)";
-				}
-				else{
-					String dataString = new String(data);
-					return dataString;
-				}
-			}
-			else if(contentType.equals(PORT_IMAGE_TYPE)){
-				// store image under the sub folder named
-				// after port name 
-				String locationToStore = getFileSaveLocation(outputsSubPath);
-				try {
-					FileOutputStream stream = new FileOutputStream(locationToStore+"/output.png"); 
-					stream.write(data);
-					stream.flush();
-					stream.close();
+			// error message
+			String outputSavingResult = null;
 
-					return "(Image saved in output folder)";
-				}catch(IOException e){
-					e.printStackTrace();	
-				}
+			if(contentType.equals(OutputTypeConstant.TEXT_TYPE)){
+				// save result on the phone
+				File outputTxtFile = new File(locationToStore+"/output.txt");
+				outputSavingResult = saveOutputToPhone(data, outputTxtFile);
+				
+				// return results for display
+				String dataString = new String(data);
+				outputValue.setStringValue(dataString);
+				outputValue.setValueType(OutputTypeConstant.TEXT_TYPE);
 			}
-			else if (contentType.equals(PORT_ERROR_TYPE)){
+			else if(contentType.equals(OutputTypeConstant.PNG_IMAGE_TYPE)){
+				// save result on the phone
+				File outputImageFile = new File(locationToStore+"/output.png");
+				outputSavingResult = saveOutputToPhone(data, outputImageFile);
+				
+				// return results for display
+				outputValue.setFileValue(outputImageFile.getAbsolutePath());
+				outputValue.setValueType(OutputTypeConstant.PNG_IMAGE_TYPE);
+			}
+			else if(contentType.equals(OutputTypeConstant.JPEG_IMAGE_TYPE)){
+				// save result on the phone
+				File outputImageFile = new File(locationToStore+"/output.jpeg");
+				outputSavingResult = saveOutputToPhone(data, outputImageFile);
+				
+				// return results for display
+				outputValue.setFileValue(outputImageFile.getAbsolutePath());
+				outputValue.setValueType(OutputTypeConstant.PNG_IMAGE_TYPE);
+			}
+			else if (contentType.equals(OutputTypeConstant.ERROR_TYPE)){
 				// if error text is too large to fit in the screen
 				// store it 
-				if (dataSize > 4096){
-					String locationToStore = getFileSaveLocation(outputsSubPath);
-					try {
-						FileOutputStream stream = new FileOutputStream(locationToStore+"/error.txt"); 
-						stream.write(data);
-						stream.flush();
-						stream.close();
-
-						return "(error message saved in output folder)";
-					}catch(IOException e){
-						e.printStackTrace();	
-					}
-				}
-				else{
-					String dataString = new String(data);
-					return dataString;
-				}
+				// save result on the phone
+				File outputTxtFile = new File(locationToStore+"/error.txt");
+				outputSavingResult = saveOutputToPhone(data, outputTxtFile);
+				
+				// return results for display
+				String dataString = new String(data);
+				outputValue.setStringValue(dataString);
+				outputValue.setValueType(OutputTypeConstant.TEXT_TYPE);
 			}
-			else{
-				return "The output data type is currently not supported";
+			else{				
+				outputValue.setStringValue("The output data type is currently not supported");
+				outputValue.setValueType(OutputTypeConstant.TEXT_TYPE);
+				// return "The output data type is currently not supported";
 			}
-
-			// should never return byte[]
+			
+			if(outputSavingResult != null){
+				outputValue.setErrorValue(outputSavingResult);
+				outputValue.setValueType(OutputTypeConstant.APPLOCATION_ERROR);
+			}
+			
+			return outputValue;
+		}
+		
+		private String saveOutputToPhone(byte[] data, File file){
+			if (file == null){
+				throw new NullPointerException("file can't be null");
+			}
+			try {
+				FileOutputStream stream = new FileOutputStream(file);
+				stream.write(data);
+				stream.flush();
+				stream.close();
+			}catch(IOException e){
+				return e.getMessage();	
+			}
 			return null;
 		}
 
-		private Object retrieveMultiDepthData(int depth, PortValue portValue){
+		private OutputValue retrieveMultiDepthData(int depth, PortValue portValue){
 
 			// prepare a list to store all elements in current level
-			ArrayList<Object> dataList = new ArrayList<Object>();
-
+			// ArrayList<Object> dataList = new ArrayList<Object>();
+			
+			OutputValue outputData = new OutputValue();
+			ArrayList<OutputValue> listdata = new ArrayList<OutputValue>();
+			
 			// if it hasn't reached the bottom
 			if(depth != 0){
 				// for every single element
@@ -946,18 +989,22 @@ public class WorkflowRunManager
 					depth--;
 					// eventually what returned below should be 
 					// single data in current level
-					Object data = retrieveMultiDepthData(depth, subPortValue);
-					dataList.add(data);
+					OutputValue data = retrieveMultiDepthData(depth, subPortValue);
+					// add value into the list of values of this port
+					listdata.add(data);
+					
+					//dataList.setListValue(listdata);;
 				}
-
+				// Retrieval of the list value of this level is completed
+				outputData.setListValue(listdata);
 				// when all elements of the list are collected
 				// return this collection for upper level to add them in
 				// upper level collection
-				return dataList;
+				return outputData;
 			}
 
 			//reached bottom
-			String data = retrieveSingleDepthData(portValue);
+			OutputValue data = retrieveSingleDepthData(portValue);
 
 			// return the single data when it reached bottom
 			// only recursive return should be done here
@@ -977,20 +1024,14 @@ public class WorkflowRunManager
 				result = message.toString();
 			}
 			else if(object instanceof String){
-
 				result += (String)object + "\n";	
 			}
 
 			return result;
 		}
 
-
 		public Object onTaskComplete(Object... result) {
 			outputRetrievalListener.onTaskComplete(result);
-			// delete the run
-			// the run has to be delete 
-			// since it can't be restarted once it's finished
-			new RunCleaner().Execute(null, 0);
 
 			return null;
 		}
@@ -1006,8 +1047,26 @@ public class WorkflowRunManager
 
 		public Object onTaskInProgress(Object... param) {
 			String runID = (String) param[0];
-			String runState = getRunStateWithID(runID);
-			return runState;
+			//String runState = getRunStateWithID(runID);
+			Server server = ta.getServer();
+			Run theRun = null;
+			try {
+				theRun = server.getRun(runID, ta.getDefaultUser());
+			} catch (NetworkConnectionException e) {
+				return "Connection problem reading data from server";
+			}
+			if(theRun != null){
+				ta.setWorkflowRunLaunched(theRun);
+				RunStatus statu;
+				try {
+					statu = theRun.getStatus();
+				} catch (NetworkConnectionException e) {
+					return "Connection problem reading data from server";
+				}
+				runStatue = getRunState(statu);
+			}
+			return runStatue;
+			//return runState;
 		}
 
 		public Object onTaskComplete(Object... result) {
@@ -1081,19 +1140,28 @@ public class WorkflowRunManager
 					for(int i = 0; i<idsOfRunsToDelete.size(); i++){
 						String id = idsOfRunsToDelete.get(i);
 						runToDelete = ta.getServer().getRun(id, ta.getDefaultUser());
-						state = getRunState(runToDelete.getStatus());
-						
-						//Run runToDelete = (Run) params[2];
-						if(state != STATE_DELETED && idsOfRunsToDelete != null){
-								succeed = runToDelete.delete();
+						if(runToDelete != null){
+							state = getRunState(runToDelete.getStatus());
+							
+							//Run runToDelete = (Run) params[2];
+							if(state != STATE_DELETED && idsOfRunsToDelete != null){
+									succeed = runToDelete.delete();
+							}
+							// build the where args for database DELETE
+							whereArgs[i] = id;
 						}
-						// build the where args for database DELETE
-						whereArgs[i] = id;
 					}
 					// delete records from database
+					String selection = null;
+					if(whereArgs.length < 1){
+						selection = DataProviderConstants.Run_Id + " IS NOT NULL";
+						whereArgs = null;
+					} else{
+						selection = DataProviderConstants.Run_Id + "= ?";
+					}
 					currentActivity.getContentResolver().delete(
 							DataProviderConstants.RUN_TABLE_CONTENTURI, 
-							DataProviderConstants.Run_Id + "= ?",
+							selection,
 							whereArgs);
 				}catch (NetworkConnectionException e) {
 					succeed = false;
@@ -1107,7 +1175,7 @@ public class WorkflowRunManager
 					// delete all records from database
 					currentActivity.getContentResolver().delete(
 							DataProviderConstants.RUN_TABLE_CONTENTURI, 
-							null, null);
+							DataProviderConstants.WF_RUN_ID +" IS NOT NULL", null);
 					return true;
 				}
 				catch(NetworkConnectionException e){
@@ -1124,20 +1192,15 @@ public class WorkflowRunManager
 				}
 				return null;
 			}
+			
 			boolean success = (Boolean) result[0];
-
 			if(success){
 				if(runDeletionListener != null){
 					runDeletionListener.onTaskComplete(result);
 				}
-				// TODO: "log" has to be removed in release version
-				Log.i("run deletion", "Run deleted successfully");
+			} else if (!success){
+				runDeletionListener.onTaskComplete("Fail to delete the run, please try again");
 			}
-			else if (!success){
-				// TODO: "log" has to be removed in release version
-				Log.i("run deletion", "Fail to delete the run");
-			}
-
 			return null;
 		}
 	}
@@ -1155,7 +1218,7 @@ public class WorkflowRunManager
 			
 			Server server = ta.getServer();
 			UserCredentials user = ta.getDefaultUser();
-			HashMap<String, String> runIdsStates = null;
+			HashMap<String, WorkflowRun> runIdsStates = null;
 			// TODO: catch exception
 			try{
 				Collection<Run> runs = server.getRuns(user);
@@ -1165,11 +1228,19 @@ public class WorkflowRunManager
 					return message; 
 				}
 				
-				runIdsStates = new HashMap<String, String>();
+				runIdsStates = new HashMap<String, WorkflowRun>();
 				// return a <Run_Id, Run_state> map
 				for(Run r : runs){
+					String[] startTime = r.getStartTime().replace("T", " ").split("\\.");
+					String[] endTime = r.getFinishTime().replace("T", " ").split("\\.");
 					String state = getRunState(r.getStatus());
-					runIdsStates.put(r.getIdentifier(), state);
+					
+					WorkflowRun wfRun = new WorkflowRun();
+					wfRun.setStartTime(startTime[0]);
+					wfRun.setEndTime(endTime[0]);
+					wfRun.setRunState(state);
+					
+					runIdsStates.put(r.getIdentifier(), wfRun);
 				}
 			}catch(NetworkConnectionException e){
 				exceptionMessage = e.getMessage();

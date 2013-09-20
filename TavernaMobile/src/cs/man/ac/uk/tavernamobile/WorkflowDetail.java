@@ -92,6 +92,7 @@ public class WorkflowDetail extends FragmentActivity implements CallbackTask {
 		ActionBar actionBar = getActionBar();
 		actionBar.setDisplayHomeAsUpEnabled(true);
 		actionBar.setTitle("Workflow Details");
+		actionBar.setIcon(this.getResources().getDrawable(R.drawable.taverna_wheel_logo_medium));
 
 		// avatar = (ImageView) findViewById(R.id.avatarImage);
 		title = (TextView) findViewById(R.id.workflowTitle);
@@ -132,8 +133,8 @@ public class WorkflowDetail extends FragmentActivity implements CallbackTask {
 				// rather than crash the application
 				MessageHelper.showMessageDialog(
 						currentActivity,
-						"No workflow data found,"
-						+ "please try again.\n(The message will be dismissed in 4 seconds)");
+						"Oops !", "No workflow data found,"
+						+ "please try again.\n(The message will be dismissed in 4 seconds)", null);
 				
 				new Handler().postDelayed(
 					new Runnable() {
@@ -229,6 +230,8 @@ public class WorkflowDetail extends FragmentActivity implements CallbackTask {
 					}
 				}
 			});*/
+		
+		this.overridePendingTransition(R.anim.push_left_in, R.anim.push_left_out);
 	}
 
 	@Override
@@ -268,7 +271,7 @@ public class WorkflowDetail extends FragmentActivity implements CallbackTask {
 
 		try {
 			uploader = (User) requestHandler.Get(userprofileUri, User.class, null, null);
-			avatarBitmap = new ImageRetriever().retrieveAvatarImage(uploader.getAvatar().getResource());
+			avatarBitmap = new ImageRetriever().retrieveImage(uploader.getAvatar().getResource());
 
 			// cache avatar image - use avatar image URI as key
 			/*String imageCacheKey = uploader.getAvatar().getUri();// "workflowPreview";
@@ -286,7 +289,7 @@ public class WorkflowDetail extends FragmentActivity implements CallbackTask {
 		if (result[0] instanceof String) {
 			String exception = (String) result[0];
 			if (exception != null) {
-				MessageHelper.showMessageDialog(currentActivity, exception);
+				MessageHelper.showMessageDialog(currentActivity, null, exception, null);
 			}
 		} else {
 			// Scale it to 125 x 125
@@ -387,5 +390,11 @@ public class WorkflowDetail extends FragmentActivity implements CallbackTask {
 			}
 			return null;
 		}
+	}
+	
+	@Override
+	public void finish(){
+		this.overridePendingTransition(R.anim.push_right_in, R.anim.push_left_out);
+		super.finish();
 	}
 }

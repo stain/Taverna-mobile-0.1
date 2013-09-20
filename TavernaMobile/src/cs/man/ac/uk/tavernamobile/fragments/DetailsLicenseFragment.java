@@ -61,7 +61,7 @@ public class DetailsLicenseFragment extends DetailsFragmentsBase implements Call
 		if(result[0] instanceof String){
 			String exception = (String) result[0];
 			if(exception != null){
-				MessageHelper.showMessageDialog(parentActivity, exception);
+				MessageHelper.showMessageDialog(parentActivity, "Oops !", exception, null);
 			}
 		}
 		else{

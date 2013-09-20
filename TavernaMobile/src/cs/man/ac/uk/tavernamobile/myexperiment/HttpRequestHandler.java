@@ -24,9 +24,7 @@ import org.simpleframework.xml.Serializer;
 import org.simpleframework.xml.core.Persister;
 
 import uk.org.taverna.server.client.NetworkConnectionException;
-
 import android.app.Activity;
-import android.util.Log;
 import cs.man.ac.uk.tavernamobile.utils.TavernaAndroid;
 
 public class HttpRequestHandler {
@@ -52,8 +50,7 @@ public class HttpRequestHandler {
 		return os.toByteArray();
 	}
 
-	public Object Post(String uri, Object data, String contentType) 
-			throws NetworkConnectionException {
+	public Object Post(String uri, Object data, String contentType) throws NetworkConnectionException {
 		Object serverResponse = null;
 
 		HttpClient httpClient = new DefaultHttpClient();
@@ -93,24 +90,18 @@ public class HttpRequestHandler {
 	}
 
 	// method to deserialise XML data to target class type
-	private <T> Object deSerialize(Class<T> classType, String data) {
+	private <T> Object deSerialize(Class<T> classType, String data) throws Exception {
 
 		Serializer serializer = new Persister();
 
 		Object result = null;
-		try {
-			result = serializer.read(classType, data, false);
-		} catch (Exception e) {
-			// TODO: log has be removed in the release version
-			Log.e("HTTP request / serialization error", e.getMessage());
-		}
+		result = serializer.read(classType, data, false);
 
 		return result;
 	}
 
 	// handle HTTP requests.
-	public <T> Object Get(String uri, Class<T> classType, String username,
-			String password) throws NetworkConnectionException {
+	public <T> Object Get(String uri, Class<T> classType, String username, String password) throws NetworkConnectionException {
 		Object targetClass = null;
 
 		HttpClient httpClient = new DefaultHttpClient();

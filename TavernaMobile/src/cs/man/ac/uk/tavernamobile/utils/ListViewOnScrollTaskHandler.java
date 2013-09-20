@@ -1,8 +1,10 @@
 package cs.man.ac.uk.tavernamobile.utils;
 
+import cs.man.ac.uk.tavernamobile.MainPanelActivity;
+import android.os.Handler;
 import android.widget.AbsListView;
-import android.widget.ListView;
 import android.widget.AbsListView.OnScrollListener;
+import android.widget.ListView;
 
 public class ListViewOnScrollTaskHandler {
 	
@@ -27,10 +29,13 @@ public class ListViewOnScrollTaskHandler {
 	private ListView theList;
 	private CallbackTask loadingTask;
 	
-	public ListViewOnScrollTaskHandler(ListView list, CallbackTask task){
+	private MainPanelActivity mainPanel;
+	
+	public ListViewOnScrollTaskHandler(MainPanelActivity activity, ListView list, CallbackTask task){
 		theList = list;
 		loadingTask = task;
 		systemStatesChecker = new SystemStatesChecker(theList.getContext());
+		mainPanel = activity;
 	}
 	
 	public void setOnScrollLoading(){
@@ -42,28 +47,38 @@ public class ListViewOnScrollTaskHandler {
 				// ">=" - in case there are any padding
 				boolean reachTheEnd = firstVisibleItem + visibleItemCount >= totalItemCount &&
 						totalItemCount > visibleItemCount;
-
-						// Check Network Connection
-						if(!systemStatesChecker.isNetworkConnected()){
-							return;
-						}
-						
 						// if scroll reach the end of the list AND
-						// in - if we are already in the process of doing
-						// a new search... (since every change made to the list
+						// if we are already in the process of doing
+						// a new search... (since every change made to the list layout
 						// triggers the invocation of onScroll())
-						if(reachTheEnd &&!taskInProgress && userScrolled && !disableTask) {
+						if(reachTheEnd && userScrolled && !taskInProgress && !disableTask) {
 							taskInProgress = true; // lock
-							loadingTask.onTaskComplete();
 							userScrolled = false;
+							// Check Network Connection
+							if(!systemStatesChecker.isNetworkConnected()){
+								return;
+							}
+							// slightly delay in order to add footer smoothly
+							new Handler().postDelayed(new Runnable() {
+								public void run() {
+									loadingTask.onTaskInProgress();
+								}},1000);
 						}
 			}
 
 			@Override
 			public void onScrollStateChanged(AbsListView view, int scrollState) {
-				if(scrollState == 1){
+				if(scrollState == SCROLL_STATE_TOUCH_SCROLL){
 					userScrolled = true;
-				}	
+					mainPanel.showPoweredBy();
+				}
+				else if(scrollState == SCROLL_STATE_IDLE){
+					new Handler().postDelayed(new Runnable() {
+						public void run() {
+							mainPanel.hidePoweredBy();
+						}
+					},200);
+				}
 			}
 		});
 	}

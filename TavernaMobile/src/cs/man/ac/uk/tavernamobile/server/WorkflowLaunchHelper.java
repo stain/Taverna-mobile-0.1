@@ -185,15 +185,11 @@ public class WorkflowLaunchHelper {
 					String[] pathSegments = path.split("/");
 					String fileName = pathSegments[pathSegments.length - 1];
 					if (fileName.matches(".*\\.t2flow")) {
-						// record the workflow detail in database.
-						// It is the first time this workflow
-						// is going to be downloaded at this point
-						recordWorkflow();
 						checkAndDownload(downloadURL);
 					} else {
-						String message = "The workflow document is not a \"t2flow\" file,\n"
+						String message = "The workflow document is not a \".t2flow\" file, "
 								+ "which is currently not supported";
-						MessageHelper.showMessageDialog(currentActivity, message);
+						MessageHelper.showMessageDialog(currentActivity, null, message, null);
 					}
 				}
 
@@ -216,7 +212,7 @@ public class WorkflowLaunchHelper {
 				downloadWorkflowFile(currentActivity, downloadURL);
 			} else {
 				String message = "You don't have the privilege to download this workflow.";
-				MessageHelper.showMessageDialog(currentActivity,message);
+				MessageHelper.showMessageDialog(currentActivity, "Attention", message, null);
 			}
 		}
 	}
@@ -257,12 +253,18 @@ public class WorkflowLaunchHelper {
 		public Object onTaskComplete(Object... result) {
 			String filePath = (String) result[0];
 
-			/*String[] elements = filePath.split("/");
-			String fileName = elements[elements.length - 1];*/
+			if(filePath == null){
+				return null;
+			}
 			workflowEntity.setFilePath(filePath);
-			//File workflowFile = new File(filePath);
-			// update the saved workflow file path
-			updateWorkflowFilePath(filePath);
+			// if it is the first time the workflow
+			// is downloaded record the workflow detail
+			if(firstEntry){
+				recordWorkflow();
+			}else{
+				// only update the saved workflow file path
+				updateWorkflowFilePath(filePath);
+			}
 			// then create run for it
 			createWorkflowRun();
 			return null;
@@ -275,6 +277,7 @@ public class WorkflowLaunchHelper {
 		valuesToInsert.put(DataProviderConstants.WorkflowTitle, workflowEntity.getTitle());
 		valuesToInsert.put(DataProviderConstants.Version, workflowEntity.getVersion());
 		valuesToInsert.put(DataProviderConstants.UploaderName, workflowEntity.getUploaderName());
+		valuesToInsert.put(DataProviderConstants.WorkflowFilePath, workflowEntity.getFilePath());
 		byte[] avatarData = bitmapToByteArray(workflowEntity.getAvatar());
 		valuesToInsert.put(DataProviderConstants.Avatar, avatarData);
 		valuesToInsert.put(DataProviderConstants.WorkflowUri, workflowEntity.getWorkflow_URI());
@@ -287,9 +290,9 @@ public class WorkflowLaunchHelper {
 	private void updateWorkflowFilePath(String workflowFilePath){
 		ContentValues valuesToUpdate = new ContentValues();
 		valuesToUpdate.put(DataProviderConstants.WorkflowFilePath, workflowFilePath);
-		String selection = DataProviderConstants.WorkflowTitle + "= ? AND "+
-						   DataProviderConstants.Version + "= ? AND " +
-						   DataProviderConstants.UploaderName + "= ?";
+		String selection = DataProviderConstants.WorkflowTitle + " = ? AND "+
+						   DataProviderConstants.Version + " = ? AND " +
+						   DataProviderConstants.UploaderName + " = ?";
 		String[] selectionArgs = 
 				new String[] { workflowEntity.getTitle(), 
 							   workflowEntity.getVersion(), 
@@ -336,8 +339,7 @@ public class WorkflowLaunchHelper {
 			if (result[0] instanceof String) {
 				String exceptionMessage = (String) result[0];
 				if (exceptionMessage != null) {
-					MessageHelper.showMessageDialog(currentActivity,
-							exceptionMessage);
+					MessageHelper.showMessageDialog(currentActivity, null, exceptionMessage, null);
 				}
 			} else {
 				/*HashMap<String, Map<String, InputPort>> idAndInputPorts =
@@ -353,9 +355,16 @@ public class WorkflowLaunchHelper {
 					runID = pair.getKey();
 					inputPorts = pair.getValue();
 				}*/
-
+				
 				Map<String, InputPort> inputPorts = (Map<String, InputPort>)result[0];
-				prepareInputs(inputPorts, workflowEntity);
+				if(inputPorts == null){
+					return null;
+				}
+				// Navigate to input screen
+				Intent goToInputList = new Intent(currentActivity, InputsList.class);
+				Bundle extras = prepareInputs(inputPorts, workflowEntity);
+				goToInputList.putExtras(extras);
+				currentActivity.startActivity(goToInputList);
 			}
 			return null;
 		}
@@ -388,21 +397,17 @@ public class WorkflowLaunchHelper {
 				selection, selectionArgs);
 	}
 
-	public void prepareInputs(Map<String, InputPort> inputPorts, WorkflowBE workflowEntity) {
+	public Bundle prepareInputs(Map<String, InputPort> inputPorts, WorkflowBE workflowEntity) {
 		// Navigate to input screen
-		Intent goToInputList = new Intent(currentActivity, InputsList.class);
 		Bundle extras = new Bundle();
-
 		if (inputPorts != null && !inputPorts.isEmpty()) {
 			ArrayList<String> inputNames = extractInputName(inputPorts);
 			extras.putStringArrayList("input_names", inputNames);
 		}
-
 		extras.putSerializable("workflowEntity", workflowEntity);
 		extras.putInt("activity_starter", Activity_Starter_Code);
-		goToInputList.putExtras(extras);
 
-		currentActivity.startActivity(goToInputList);
+		return extras;
 	}
 
 	private ArrayList<String> extractInputName(Map<String, InputPort> inputPorts) {

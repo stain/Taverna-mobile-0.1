@@ -1,29 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
-<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
-    android:layout_gravity="center" >
+    android:layout_gravity="center"
+    android:gravity="center"
+    android:minWidth="200dip"
+    android:orientation="vertical" >
 
     <TextView
         android:id="@+id/neutraldialog_message"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_alignParentTop="true"
-        android:layout_centerHorizontal="true"
-        android:layout_margin="10dp"
-        android:gravity="center"
-        android:text="Medium Text"
-        android:textAppearance="?android:attr/textAppearanceMedium"
-        android:textColor="@color/White" />
+        android:layout_width="wrap_content"
+        android:layout_height="0dp"
+        android:layout_marginLeft="20dp"
+        android:layout_marginRight="20dp"
+        android:layout_weight="3"
+        android:textAppearance="?android:attr/textAppearanceSmall"
+        android:textColor="@color/Black"/>
 
     <Button
         android:id="@+id/neutraldialog_dismiss_button"
         android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_below="@id/neutraldialog_message"
-        android:layout_centerHorizontal="true"
-        android:background="@drawable/list_selector"
+        android:layout_height="0dp"
+        android:layout_margin="10dp"
+        android:layout_weight="1"
+        android:background="@drawable/dialog_bottom_selector"
         android:gravity="center"
-        android:text="@string/netrual_dialog_button_text" />
+        android:minHeight="45dp"
+        android:paddingLeft="35dp"
+        android:paddingRight="35dp"
+        android:text="@string/netrual_dialog_button_text"
+        android:textSize="15sp" />
 
-</RelativeLayout>
+</LinearLayout>

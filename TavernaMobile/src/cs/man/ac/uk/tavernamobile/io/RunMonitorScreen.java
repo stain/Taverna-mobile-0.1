@@ -2,13 +2,17 @@ package cs.man.ac.uk.tavernamobile.io;
 
 import java.util.HashMap;
 
+import android.app.ActionBar;
 import android.app.Activity;
 import android.app.NotificationManager;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
 import android.os.Bundle;
 import android.support.v4.app.NotificationCompat;
 import android.util.Log;
+import android.view.MenuItem;
 import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
@@ -17,8 +21,8 @@ import android.widget.TextView;
 import cs.man.ac.uk.tavernamobile.R;
 import cs.man.ac.uk.tavernamobile.datamodels.WorkflowBE;
 import cs.man.ac.uk.tavernamobile.server.WorkflowRunManager;
-import cs.man.ac.uk.tavernamobile.utils.CallbackTask;
 import cs.man.ac.uk.tavernamobile.utils.BackgroundTaskHandler;
+import cs.man.ac.uk.tavernamobile.utils.CallbackTask;
 import cs.man.ac.uk.tavernamobile.utils.MessageHelper;
 import cs.man.ac.uk.tavernamobile.utils.TavernaAndroid;
 
@@ -47,8 +51,6 @@ public class RunMonitorScreen extends Activity implements CallbackTask {
 	int notificationId = 0;
 	private NotificationManager mNotificationManager;
 
-	private int Activity_Starter_Code;
-
 	private boolean running = false;
 
 	@Override
@@ -57,12 +59,18 @@ public class RunMonitorScreen extends Activity implements CallbackTask {
 		setContentView(R.layout.run_monitor_screen);
 
 		currentActivity = this;
+		
+		ActionBar actionBar = getActionBar();
+		actionBar.setBackgroundDrawable(new ColorDrawable(Color.parseColor("#D02E2E2E")));
+		actionBar.setHomeButtonEnabled(true);
+		actionBar.setDisplayHomeAsUpEnabled(true);
+		actionBar.setDisplayShowTitleEnabled(true);
+		actionBar.setIcon(this.getResources().getDrawable(R.drawable.taverna_wheel_logo_medium));
 
 		// get data passed in
 		Bundle extras = getIntent().getExtras();
 		final WorkflowBE workflowEntity = (WorkflowBE) extras.getSerializable("workflowEntity");
 		userInputs = (HashMap<String, Object>) extras.getSerializable("userInputs");
-		Activity_Starter_Code = extras.getInt("activity_starter");
 		// command which indicate to start a new run or
 		// monitoring an existing run
 		String command = extras.getString("command");
@@ -91,7 +99,7 @@ public class RunMonitorScreen extends Activity implements CallbackTask {
 
 		// TODO: start the run here ????
 		if(command.equals("RunWorkflow")){
-			manager.StartWorkflowRun(userInputs, workflowEntity, this);
+			manager.StartWorkflowRun(userInputs, workflowEntity, this, true);
 		}
 		else if (command.equals("MonitoringOnly")){
 			manager.StartMonitoring(this);
@@ -119,7 +127,13 @@ public class RunMonitorScreen extends Activity implements CallbackTask {
 				running = false;
 				mNotificationManager.cancelAll();//.cancel(notificationId);
 
-				manager.getRunOutput(workflowEntity.getTitle(), null, 
+				Intent goToOutput = new Intent(currentActivity, OutputsTree.class);
+				Bundle extras = new Bundle();
+				extras.putSerializable("workflowEntity", workflowEntity);
+				goToOutput.putExtras(extras);
+				currentActivity.startActivity(goToOutput);
+				
+				/*manager.getRunOutput(workflowEntity.getTitle(), null, 
 					new CallbackTask(){
 						@Override
 						public Object onTaskInProgress(Object... param) { return null; }
@@ -127,10 +141,12 @@ public class RunMonitorScreen extends Activity implements CallbackTask {
 						@Override
 						public Object onTaskComplete(Object... result) {
 							if(result[0] instanceof String){
-								MessageHelper.showMessageDialog(currentActivity, (String)result[0]);
+								MessageHelper.showMessageDialog(
+										currentActivity, null, (String)result[0], null);
 								return null;
 							}
 							// TODO : prepare output tree view
+							ArrayList<OutputValue> outputPortsValue = (ArrayList<OutputValue>)result[0];
 							
 							Intent goToOutput = new Intent(currentActivity, OutputsList.class);
 							Bundle extras = new Bundle();
@@ -140,9 +156,19 @@ public class RunMonitorScreen extends Activity implements CallbackTask {
 							currentActivity.startActivity(goToOutput);
 							return null;
 						}	
-					});
+					});*/
 			}// end of onClick
 		});
+	}
+	
+	@Override
+	public boolean onOptionsItemSelected(MenuItem item) {
+		switch (item.getItemId()) {
+		case android.R.id.home:
+			finish();
+		default:
+			return super.onOptionsItemSelected(item);
+		}
 	}
 
 	public Object onTaskInProgress(Object... param) {
@@ -158,7 +184,7 @@ public class RunMonitorScreen extends Activity implements CallbackTask {
 
 	public Object onTaskComplete(Object... result) {
 		if(result.length > 0 && result[0] instanceof String){
-			MessageHelper.showMessageDialog(currentActivity, (String)result[0]);
+			MessageHelper.showMessageDialog(currentActivity, null, (String)result[0], null);
 			return null;
 		}
 		running = false;

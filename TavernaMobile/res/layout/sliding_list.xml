@@ -1,38 +1,40 @@
 <?xml version="1.0" encoding="utf-8"?>
-<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="wrap_content"
-    android:layout_height="wrap_content" >
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/slidingMenuScroll"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/SlateGray"
+    android:fillViewport="true" >
 
-    <TextView
-        android:id="@+id/myExperimentLoginState"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_margin="20dp"
-        android:background="@drawable/general_selector"
-        android:drawableLeft="@drawable/myexperiment_logo_small"
-        android:drawablePadding="5dp"
-        android:gravity="center"
-        android:padding="10dp"
-        android:textAppearance="?android:attr/textAppearanceSmall"
-        android:textColor="@color/Gray"
-        android:textStyle="bold"
-        android:visibility="visible" />
-
-    <ListView
-        android:id="@+id/tobe_added_list"
+    <LinearLayout
+        android:id="@+id/slidingMenuRoot"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_below="@+id/myExperimentLoginState"
-        android:paddingLeft="@dimen/list_padding"
-        android:paddingRight="@dimen/list_padding" />
-    
-    <ListView
-        android:id="@+id/sliding_menu_setting_list"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_alignParentBottom="true"
-        android:layout_below="@+id/tobe_added_list"
-        android:paddingLeft="@dimen/list_padding"
-        android:paddingRight="@dimen/list_padding" />
+        android:orientation="vertical" >
 
-</RelativeLayout>
+        <LinearLayout
+            android:layout_width="fill_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/sliding_header"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:padding="25dp" >
+
+            <TextView
+                android:id="@+id/myExperimentLoginState"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/sliding_header_login"
+                android:drawableLeft="@drawable/myexperiment_logo_small"
+                android:drawablePadding="5dp"
+                android:gravity="center"
+                android:padding="10dp"
+                android:textAppearance="?android:attr/textAppearanceSmall"
+                android:textColor="@color/White"
+                android:textStyle="bold"
+                android:visibility="visible" />
+
+        </LinearLayout>
+    </LinearLayout>
+
+</ScrollView>

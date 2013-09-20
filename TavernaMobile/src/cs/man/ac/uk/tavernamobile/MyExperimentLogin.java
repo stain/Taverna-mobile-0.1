@@ -3,17 +3,15 @@ package cs.man.ac.uk.tavernamobile;
 import uk.org.taverna.server.client.NetworkConnectionException;
 import android.app.ActionBar;
 import android.app.Activity;
-import android.content.Context;
 import android.content.Intent;
-import android.graphics.Bitmap;
+import android.content.SharedPreferences;
 import android.os.Bundle;
-import android.support.v4.util.LruCache;
-import android.view.KeyEvent;
 import android.view.MenuItem;
 import android.view.View;
-import android.view.View.OnKeyListener;
-import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
+import android.widget.CheckBox;
+import android.widget.CompoundButton;
+import android.widget.CompoundButton.OnCheckedChangeListener;
 import android.widget.EditText;
 import cs.man.ac.uk.tavernamobile.datamodels.MyExperimentSession;
 import cs.man.ac.uk.tavernamobile.datamodels.User;
@@ -30,12 +28,17 @@ public class MyExperimentLogin extends Activity implements CallbackTask {
 	// references
 	private Activity currentActivity;
 	private MyExperimentLogin currentClass;
+	private User userLoggedin;
 	
+	// utilities
+	private SharedPreferences loginPreferences;
+    private SharedPreferences.Editor loginPrefsEditor;
 	private static HttpRequestHandler requestHandler;
 	
 	// UI elements
 	private EditText username, password;
 	private Button btnSubmit, btnBack;
+	private CheckBox saveUserNameCb, savePasswordCb;
 	
 	@Override
 	public void onCreate(Bundle savedInstanceState) {
@@ -51,47 +54,42 @@ public class MyExperimentLogin extends Activity implements CallbackTask {
 		// UI components
 		ActionBar actionBar = getActionBar();
 		actionBar.setDisplayHomeAsUpEnabled(true);
-		actionBar.setDisplayShowTitleEnabled(false);
+		actionBar.setDisplayShowTitleEnabled(true);
+		actionBar.setIcon(this.getResources().getDrawable(R.drawable.taverna_wheel_logo_medium));
 
 		username = (EditText) findViewById(R.id.myeloginUsernameValue);
 		password = (EditText) findViewById(R.id.myeloginPasswordValue);
 		btnSubmit = (Button) findViewById(R.id.myeloginButton);
 		btnBack = (Button) findViewById(R.id.myeloginBackButton);
-
-		username.setOnKeyListener(new OnKeyListener() {
-
-		    public boolean onKey(View v, int keyCode, KeyEvent event) {
-		          // If the event is a key-down event on the "enter" button
-		          if ((event.getAction() == KeyEvent.ACTION_DOWN) &&
-		               (keyCode == KeyEvent.KEYCODE_ENTER)){
-		        	  username.clearFocus();
-		        	  password.requestFocus();
-		              return true;
-		          }
-		          return false;
-		    }
-		});
+		saveUserNameCb = (CheckBox) findViewById(R.id.saveUsernameCheckbox);
+		savePasswordCb = (CheckBox) findViewById(R.id.savePasswordsCheckbox);
 		
-		password.setSingleLine();
-		password.setOnKeyListener(new OnKeyListener() {
-
-		    public boolean onKey(View v, int keyCode, KeyEvent event) {
-		          // If the event is a key-down event on the "enter" button
-		          if ((event.getAction() == KeyEvent.ACTION_DOWN) &&
-		               (keyCode == KeyEvent.KEYCODE_ENTER)){
-		        	  hideKeyboard();
-		              return true;
-		          }
-		          return false;
-		    }
-		});
+		loginPreferences = getSharedPreferences("loginPreference", MODE_PRIVATE);
+		if (loginPreferences != null){
+			boolean usernameSaved = loginPreferences.getBoolean("usernameSaved", false);
+	        if (usernameSaved) {
+	        	// retrieve saved username
+	        	username.setText(loginPreferences.getString("username", ""));
+	        	boolean passwordSaved = loginPreferences.getBoolean("passwordSaved", false);
+	        	if(passwordSaved){
+	        		password.setText(loginPreferences.getString("password", ""));
+	        	}
+	        	// restore check box states
+	        	saveUserNameCb.setChecked(usernameSaved);
+	        	savePasswordCb.setChecked(passwordSaved);
+	        	
+	        	if(!saveUserNameCb.isChecked()){
+	    			savePasswordCb.setChecked(false);
+	    			savePasswordCb.setEnabled(false);
+	    		}
+	        }
+		}
 		
 		btnSubmit.setOnClickListener(new android.view.View.OnClickListener() {
 
 			public void onClick(View v) {
 				// check for Internet connection
-				SystemStatesChecker checker = new SystemStatesChecker(
-						currentActivity);
+				SystemStatesChecker checker = new SystemStatesChecker(currentActivity);
 				if (!checker.isNetworkConnected()) {
 					return;
 				}
@@ -100,11 +98,11 @@ public class MyExperimentLogin extends Activity implements CallbackTask {
 				String passwordvalue = password.getText().toString().trim();
 
 				if (usernamevalue == null || usernamevalue.equals("")) {
-					MessageHelper.showMessageDialog(currentActivity,
-							"Please type in username");
+					MessageHelper.showMessageDialog(
+							currentActivity, "Empty field", "Please type in username", null);
 				} else if (passwordvalue == null || passwordvalue.equals("")) {
-					MessageHelper.showMessageDialog(currentActivity,
-							"Please type in password");
+					MessageHelper.showMessageDialog(
+							currentActivity, "Empty field", "Please type in password", null);
 				} else {
 					BackgroundTaskHandler handler = new BackgroundTaskHandler();
 					handler.StartBackgroundTask(currentActivity,
@@ -115,18 +113,36 @@ public class MyExperimentLogin extends Activity implements CallbackTask {
 		});
 		
 		btnBack.setOnClickListener(new android.view.View.OnClickListener() {
-
 			public void onClick(View v) {
-				finish();
+				Intent goBackToMain = new Intent(currentActivity, MainPanelActivity.class);
+				goBackToMain.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
+				startActivity(goBackToMain);
+				currentActivity.overridePendingTransition(R.anim.push_right_in, R.anim.push_right_out);
 			}
 		});
-	}
+		
+		saveUserNameCb.setOnCheckedChangeListener(new OnCheckedChangeListener(){
+			@Override
+			public void onCheckedChanged(CompoundButton checkbutton, boolean isChecked) {
+				if(isChecked){
+					savePasswordCb.setEnabled(true);
+				}else{
+					savePasswordCb.setChecked(false);
+					savePasswordCb.setEnabled(false);
+				}
+			}
+		});
+	}// end of onCreate
 
 	@Override
 	public boolean onOptionsItemSelected(MenuItem item) {
 		switch (item.getItemId()) {
 		case android.R.id.home:
-			getFragmentManager().popBackStack();
+			Intent goBackToMain = new Intent(this, MainPanelActivity.class);
+			goBackToMain.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
+			startActivity(goBackToMain);
+			this.overridePendingTransition(R.anim.push_right_in, R.anim.push_right_out);
+			return true;
 		default:
 			return super.onOptionsItemSelected(item);
 		}
@@ -145,21 +161,33 @@ public class MyExperimentLogin extends Activity implements CallbackTask {
 			response = requestHandler.Get(whoAmI, User.class, username, password);
 			
 			if(response instanceof User){
-				User currentUser = (User) response;
+				userLoggedin = (User) response;
 				// load and cache the user avatar
 				// so that it can be retrieved from cache
 				// when needed rather than over network request
-				String avatarURI = currentUser.getAvatar().getResource();
-				Bitmap avatar = new ImageRetriever().retrieveAvatarImage(avatarURI);
-				LruCache<String, Bitmap> imageCache = TavernaAndroid
-						.getmMemoryCache();
-				imageCache.put(avatarURI, avatar);
-				TavernaAndroid.setmMemoryCache(imageCache);
+				String avatarURI = userLoggedin.getAvatar().getResource();
+				new ImageRetriever().retrieveImage(avatarURI);
 
-				// store the name of the user in "Application"
-				// the Get will throw exception if the login
-				// details are not correct
-				TavernaAndroid.setMyEUserLoggedin(currentUser);
+				// store the user object in "Application" global context
+				TavernaAndroid.setMyEUserLoggedin(userLoggedin);
+				
+				// prepare to save username and password
+				loginPreferences = getSharedPreferences("loginPreference", MODE_PRIVATE);
+				// edit will save to "loginPreference"
+		        loginPrefsEditor = loginPreferences.edit();
+		        
+		        if(saveUserNameCb.isChecked()){
+		        	loginPrefsEditor.putBoolean("usernameSaved", true);
+	                loginPrefsEditor.putString("username", username);
+	                if (savePasswordCb.isChecked()) {
+	                	loginPrefsEditor.putBoolean("passwordSaved", true);
+	                	loginPrefsEditor.putString("password", password);
+	                }
+	                loginPrefsEditor.commit();
+	            } else {
+	                loginPrefsEditor.clear();
+	                loginPrefsEditor.commit();
+	            }
 
 				// then try to get cookies
 				String location = "http://www.myexperiment.org/session";
@@ -192,40 +220,13 @@ public class MyExperimentLogin extends Activity implements CallbackTask {
 	public Object onTaskComplete(Object... result) {
 		String responseMessage = (String) result[0];
 		if (responseMessage != null) {
-			MessageHelper.showMessageDialog(this, responseMessage);
+			MessageHelper.showMessageDialog(this, null, responseMessage, null);
 		} else {
-			/*menu.setSlidingEnabled(true);
-			FragmentTransaction ft =
-					parentActivity.getSupportFragmentManager().beginTransaction();
-			ft.setCustomAnimations(R.anim.push_left_in, R.anim.push_left_out);
-			ft.remove(currentClass).commit();*/
-			
-			/*FragmentTransaction ft =
-					parentActivity.getSupportFragmentManager().beginTransaction();
-			ft.setCustomAnimations(R.anim.push_left_in, R.anim.push_left_out);
-			Fragment newFragment = new MainFragment();
-			ft.addToBackStack("mainFragment");
-			ft.replace(R.id.main_panel_root, newFragment).commit();*/
-			
-			Intent goBackToMain = new Intent(this, MainActivity.class);
+			Intent goBackToMain = new Intent(this, MainPanelActivity.class);
 			goBackToMain.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
 			startActivity(goBackToMain);
+			this.overridePendingTransition(R.anim.push_left_in, R.anim.push_left_out);
 		}
 		return null;
-	}
-	
-	// method that hide the soft keyboard
-	private void hideKeyboard(){
-		InputMethodManager inputManager = (InputMethodManager)
-				currentActivity.getSystemService(Context.INPUT_METHOD_SERVICE); 
-
-		inputManager.hideSoftInputFromWindow(currentActivity.getCurrentFocus().getWindowToken(),
-				InputMethodManager.HIDE_NOT_ALWAYS);
-	}
-
-	@Override
-	public void finish() {
-		this.overridePendingTransition(R.anim.push_right_in, R.anim.push_right_out);
-		super.finish();
 	}
 }

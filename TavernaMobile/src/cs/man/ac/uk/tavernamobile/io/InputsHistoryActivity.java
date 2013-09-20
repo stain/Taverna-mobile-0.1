@@ -1,11 +1,21 @@
 package cs.man.ac.uk.tavernamobile.io;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FilenameFilter;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map.Entry;
 
 import android.app.ActionBar;
 import android.content.Context;
@@ -17,7 +27,7 @@ import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
-import android.view.View.OnLongClickListener;
+import android.view.View.OnClickListener;
 import android.view.ViewGroup;
 import android.widget.BaseAdapter;
 import android.widget.CheckBox;
@@ -30,21 +40,21 @@ import cs.man.ac.uk.tavernamobile.datamodels.WorkflowBE;
 import cs.man.ac.uk.tavernamobile.server.WorkflowLaunchHelper;
 import cs.man.ac.uk.tavernamobile.utils.CallbackTask;
 import cs.man.ac.uk.tavernamobile.utils.MessageHelper;
+import cs.man.ac.uk.tavernamobile.utils.SystemStatesChecker;
 
 public class InputsHistoryActivity extends FragmentActivity {
 
-	public final static String FILE_PATH = "file_path";
-	public final static String SELECTED_FILE_NAME = "selectedInputFileName";
 	private static String INITIAL_DIRECTORY;
-
-	protected File mDirectory;
-	protected List<File> mFiles;
-	protected InputsHistoryListAdapter mAdapter;
+	private File mDirectory;
+	private List<File> mFiles;
+	private List<Boolean> checkboxesStates;
+	private InputsHistoryListAdapter mAdapter;
 
 	private FragmentActivity currentActivity;
 	protected ActionMode mActionMode;
 	private TextView defaultText;
 	private ListView inputsList;
+	private TextView wfHistoryStatistics;
 	
 	private List<File> selectedInputs;
 	private WorkflowBE workflowEntity;
@@ -65,7 +75,11 @@ public class InputsHistoryActivity extends FragmentActivity {
 		ActionBar actionBar = getActionBar();
 		actionBar.setDisplayHomeAsUpEnabled(true);
 		actionBar.setTitle("Inputs History");
+		actionBar.setIcon(this.getResources().getDrawable(R.drawable.taverna_wheel_logo_medium));
 
+		// TODO: temp replacement of statistic
+		wfHistoryStatistics = (TextView) this.findViewById(R.id.wfHistoryStatistics);
+		TextView wfHistoryWfTitle = (TextView) this.findViewById(R.id.wfHistoryWfTitle);
 		inputsList = (ListView) findViewById(R.id.savedInputsList);
 		defaultText = (TextView) findViewById(R.id.workflow_frag_default_textview);
 
@@ -73,7 +87,7 @@ public class InputsHistoryActivity extends FragmentActivity {
 		Activity_Starter_Code = (Integer) getIntent().getIntExtra("Activity_Starter_Code", 1);
 
 		if (workflowEntity != null) {
-			
+			wfHistoryWfTitle.setText(workflowEntity.getTitle());
 			// get directory path
 			File root = android.os.Environment.getExternalStorageDirectory();
 			String inputsSubPath = "/TavernaAndroid/Inputs/"
@@ -83,6 +97,7 @@ public class InputsHistoryActivity extends FragmentActivity {
 			INITIAL_DIRECTORY = root.getAbsolutePath() + inputsSubPath;
 			mDirectory = new File(INITIAL_DIRECTORY);
 			mFiles = new ArrayList<File>();
+			checkboxesStates = new ArrayList<Boolean>();
 			mAdapter = new InputsHistoryListAdapter(mFiles);
 			inputsList.setAdapter(mAdapter);
 		}
@@ -90,6 +105,10 @@ public class InputsHistoryActivity extends FragmentActivity {
 
 	@Override
 	protected void onResume() {
+		resetCheckboxesStates();
+		if(mActionMode != null){
+			mActionMode.finish();
+		}
 		refreshFilesList();
 		super.onResume();
 	}
@@ -99,12 +118,58 @@ public class InputsHistoryActivity extends FragmentActivity {
 		finish();
 		super.onBackPressed();
 	}
+	
+	@Override
+	protected void onPause(){
+		resetCheckboxesStates();
+		if(mActionMode != null){
+			mActionMode.finish();
+		}
+		this.overridePendingTransition(R.anim.push_right_in, R.anim.push_right_out);
+		super.onPause();
+	}
+	
+	@Override
+	public void finish(){
+		this.overridePendingTransition(R.anim.push_right_in, R.anim.push_right_out);
+		super.finish();
+	}
+	
+	@Override
+	public boolean onCreateOptionsMenu(Menu menu) {
+		super.onCreateOptionsMenu(menu);
+		getMenuInflater().inflate(R.menu.input_history_menu, menu);
+		return true;
+	}
 
 	@Override
 	public boolean onOptionsItemSelected(MenuItem item) {
 		switch (item.getItemId()) {
 		case android.R.id.home:
 			finish();
+			return true;
+		case R.id.input_history_relaunch:
+			MessageHelper.showOptionsDialog(currentActivity,
+					"Do you want to launch the workflow again ?", null, 
+					new CallbackTask() {
+						@Override
+						public Object onTaskInProgress(Object... param) {
+							SystemStatesChecker sysChecker = new SystemStatesChecker(currentActivity);
+							if (!(sysChecker.isNetworkConnected())) {
+								return true;
+							}
+							WorkflowLaunchHelper launchHelper = 
+									new WorkflowLaunchHelper(currentActivity, Activity_Starter_Code);
+							launchHelper.launch(workflowEntity, 0);
+							return null;
+						}
+
+						@Override
+						public Object onTaskComplete(Object... result) {
+							return null;
+						}
+					},null);
+			return true;
 		default:
 			return super.onOptionsItemSelected(item);
 		}
@@ -147,39 +212,79 @@ public class InputsHistoryActivity extends FragmentActivity {
 
 			TextView fileName = (TextView) convertView.findViewById(R.id.savedInputFileName);
 			CheckBox inputHisCheckbox = (CheckBox) convertView.findViewById(R.id.savedInputCheckBox);
+			inputHisCheckbox.setChecked(checkboxesStates.get(position));
 			inputHisCheckbox.setOnCheckedChangeListener(new OnCheckedChangeListener() {
 					@Override
 					public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-						// start the action mode when there are selected
-						// runs
-						if (mActionMode == null && selectedInputs.size() < 1) {
+						int fileIndex = mFiles.indexOf(file);
+						if (isChecked) {
+							// set check box states in the state collection
+							checkboxesStates.set(fileIndex, true);
+							selectedInputs.add(file);
+						} else {
+							checkboxesStates.set(fileIndex, false);
+							selectedInputs.remove(file);
+						}
+						
+						// start the action mode when there are 
+						// selected input file
+						if (mActionMode == null) {
 							mActionMode = currentActivity.startActionMode(mActionModeCallback);
 						} else if (selectedInputs.size() < 1) {
 							mActionMode.finish();
 						}
-
-						if (isChecked) {
-							// String runid = (String) getKey(childID);
-							selectedInputs.add(file);
-						} else {
-							// String runid = (String) getKey(childID);
-							selectedInputs.remove(file);
-						}
 					}
 				});
 
-			convertView.setOnLongClickListener(new OnLongClickListener() {
+			fileName.setSingleLine(true);
+			fileName.setText(file.getName().split("\\.")[0]);
+			
+			convertView.setOnClickListener(new OnClickListener(){
+
 				@Override
-				public boolean onLongClick(View view) {
-					mActionMode = currentActivity.startActionMode(mActionModeCallback);
-					return true;
+				public void onClick(View arg0) {
+					String message = null;
+					try {
+						message = readFile(file);
+					} catch (IOException e) {
+						e.printStackTrace();
+						message = "Fail to read saved input.";
+					}
+					MessageHelper.showMessageDialog(currentActivity, "Input detail", message, null);	
 				}
 			});
 
-			fileName.setSingleLine(true);
-			fileName.setText(file.getName());
-
 			return convertView;
+		}
+		
+		String readFile(File file) throws IOException {
+			FileInputStream fis = new FileInputStream(file);
+		    ObjectInputStream ois = new ObjectInputStream(fis);
+		    HashMap<String, Object> savedInputs = null;
+			try {
+				savedInputs = (HashMap<String, Object>) ois.readObject();
+			} catch (ClassNotFoundException e) {
+				e.printStackTrace();
+				return "Fail to read saved input";
+			} finally {
+				fis.close();
+				ois.close();
+		    }
+		    
+		    // setup(upload) input
+		    Iterator<Entry<String, Object>> it = savedInputs.entrySet().iterator();
+		    String messageToReturn = "";
+			while(it.hasNext()){
+				Entry<String, Object> pair = it.next();
+				Object value = pair.getValue();
+				if(value instanceof String){
+					messageToReturn += pair.getKey() + " = " + value + "\n";
+				}else if(value instanceof File){
+					messageToReturn += pair.getKey() + " = " + ((File)value).getAbsolutePath() + "\n";
+				}
+				
+			}
+			return messageToReturn;
 		}
 	}
 
@@ -222,7 +327,18 @@ public class InputsHistoryActivity extends FragmentActivity {
 									if(result != null && result.length > 0 && 
 											result[0] instanceof String){
 										MessageHelper.showMessageDialog(
-												currentActivity, (String) result[0]);
+											currentActivity, null, (String) result[0], 
+											new CallbackTask(){
+												@Override
+												public Object onTaskInProgress(Object... param) {
+													currentActivity.finish();
+													return null;
+												}
+	
+												@Override
+												public Object onTaskComplete(Object... result) 
+												{ return null; }
+											});
 									}
 									return null;
 								}
@@ -267,11 +383,13 @@ public class InputsHistoryActivity extends FragmentActivity {
 		// Called when the user exits the action mode
 		public void onDestroyActionMode(ActionMode mode) {
 			mActionMode = null;
+			resetCheckboxesStates();
 		}
 	};
 
 	protected void refreshFilesList() {
 		mFiles.clear();
+		checkboxesStates.clear();
 		// Set the file extension filter
 		ExtensionFilenameFilter filter = new ExtensionFilenameFilter(new String[] { ".tai" });
 
@@ -280,30 +398,48 @@ public class InputsHistoryActivity extends FragmentActivity {
 		if (files != null && files.length > 0) {
 			for (File f : files) {
 				mFiles.add(f);
+				// Initialize checkboxes state in the same time
+				checkboxesStates.add(false);
 			}
-
+			
 			Collections.sort(mFiles, new FileComparator());
 			inputsList.setVisibility(0);
 			defaultText.setVisibility(8);
+			wfHistoryStatistics.setVisibility(0);
+			wfHistoryStatistics.setText("Select from following previous inputs to launch the workflow again.");
 		}else{
 			defaultText.setVisibility(0);
 			inputsList.setVisibility(8);
+			wfHistoryStatistics.setVisibility(8);
 		}
 		mAdapter.notifyDataSetChanged();
 	}
 
+	private void resetCheckboxesStates() {
+		for(int i = 0; i < checkboxesStates.size(); i++){
+			checkboxesStates.set(i, false);
+		}
+		mAdapter.notifyDataSetChanged();
+	}
+	
 	private class FileComparator implements Comparator<File> {
 		public int compare(File f1, File f2) {
-			if (f1 == f2) {
-				return 0;
+			String f1time = f1.getName();
+			String f2time = f2.getName();
+			SimpleDateFormat sdf = new SimpleDateFormat("dd MMM yyyy HH:mm:ss", Locale.getDefault());
+			Date f1date = null; 
+			Date f2date = null;
+			try {
+				f1date = sdf.parse(f1time);
+				f2date = sdf.parse(f2time);
+			} catch (ParseException e) {
+				e.printStackTrace();
 			}
-			if (f1.isDirectory() && f2.isFile()) {
-				// Show directories above files
-				return -1;
-			}
-			if (f1.isFile() && f2.isDirectory()) {
-				// Show files below directories
+			if (f1date.before(f2date)) {
 				return 1;
+			}
+			if (f2date.before(f1date)){
+				return -1;
 			}
 			// Sort the directories alphabetically
 			return f1.getName().compareToIgnoreCase(f2.getName());
